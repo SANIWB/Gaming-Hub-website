@@ -1,6 +1,4 @@
-const fs = require("fs");
-
-const FILE = "./users.json";
+const db = require("./db");
 
 const rewards = [
   { id: "bronze", name: "🥉 Bronze Reward", cost: 500 },
@@ -8,65 +6,100 @@ const rewards = [
   { id: "gold", name: "🥇 Gold Reward", cost: 2500 }
 ];
 
-function getUsers() {
-  return JSON.parse(fs.readFileSync(FILE, "utf8"));
-}
-
-function saveUsers(users) {
-  fs.writeFileSync(FILE, JSON.stringify(users, null, 2));
-}
-
 function getRewards() {
   return rewards;
 }
 
-function redeemReward(email, rewardId) {
-  const users = getUsers();
-  const user = users.find(u => u.email === email);
+async function redeemReward(email, rewardId) {
   const reward = rewards.find(r => r.id === rewardId);
-
-  if (!user) {
-    return { ok: false, message: "User not found." };
-  }
 
   if (!reward) {
     return { ok: false, message: "Reward not found." };
   }
 
-  if (!user.coins) user.coins = 100;
+  const client = await db.connect();
 
-  if (user.coins < reward.cost) {
+  try {
+    await client.query("BEGIN");
+
+    const result = await client.query(
+      "SELECT * FROM users WHERE email = $1 FOR UPDATE",
+      [email]
+    );
+
+    if (!result.rows.length) {
+      await client.query("ROLLBACK");
+      return { ok: false, message: "User not found." };
+    }
+
+    const user = result.rows[0];
+    const coins = Number(user.coins || 0);
+
+    if (coins < reward.cost) {
+      await client.query("ROLLBACK");
+
+      return {
+        ok: false,
+        message: "Not enough coins.",
+        coins
+      };
+    }
+
+    const oldCoins = coins;
+    const newCoins = coins - reward.cost;
+
+    const userRewards = Array.isArray(user.rewards)
+      ? user.rewards
+      : [];
+
+    userRewards.push({
+      id: reward.id,
+      name: reward.name,
+      redeemedAt: new Date().toISOString()
+    });
+
+    await client.query(
+      `UPDATE users
+       SET coins = $1,
+           rewards = $2
+       WHERE email = $3`,
+      [newCoins, JSON.stringify(userRewards), email]
+    );
+
+    await client.query(
+      `INSERT INTO coin_history
+       (email, username, amount, old_coins, new_coins, type)
+       VALUES ($1, $2, $3, $4, $5, 'reward-redemption')`,
+      [
+        user.email,
+        user.username,
+        -reward.cost,
+        oldCoins,
+        newCoins
+      ]
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      ok: true,
+      message: `${reward.name} redeemed successfully!`,
+      coins: newCoins
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Reward redemption error:", error);
+
     return {
       ok: false,
-      message: "Not enough coins.",
-      coins: user.coins
+      message: "Server error."
     };
+  } finally {
+    client.release();
   }
-
-  const oldCoins = user.coins;
-  user.coins -= reward.cost;
-
-  if (!user.rewards) user.rewards = [];
-
-  const historyFile = "./coin-history.json";
-  let history = [];
-  if (fs.existsSync(historyFile)) { try { history = JSON.parse(fs.readFileSync(historyFile, "utf8")); } catch(e) { history = []; } }
-  history.push({email:user.email,username:user.username,amount:-reward.cost,oldCoins,newCoins:user.coins,type:"reward-redemption",rewardId:reward.id,rewardName:reward.name,time:new Date().toISOString()});
-  fs.writeFileSync(historyFile, JSON.stringify(history,null,2));
-
-  user.rewards.push({
-    id: reward.id,
-    name: reward.name,
-    redeemedAt: new Date().toISOString()
-  });
-
-  saveUsers(users);
-
-  return {
-    ok: true,
-    message: `${reward.name} redeemed successfully!`,
-    coins: user.coins
-  };
 }
 
-module.exports = { getRewards, redeemReward };
+module.exports = {
+  getRewards,
+  redeemReward
+};
