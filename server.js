@@ -1,5 +1,6 @@
 const fs = require("fs");
 const express = require("express");
+const db = require("./db");
 const { getTasks, completeTask } = require("./tasks");
 const { getRewards, redeemReward } = require("./rewards");
 const { addDailyBonus, getWallet } = require("./wallet");
@@ -86,92 +87,351 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-app.get("/api/wallet/:email", (req, res) => {
-  const wallet = getWallet(req.params.email);
-  if (!wallet) return res.status(404).json({ ok: false, message: "User not found." });
-  res.json({ ok: true, wallet });
+app.get("/api/wallet/:email", async (req, res) => {
+  try {
+    const wallet = await getWallet(req.params.email);
+    if (!wallet) return res.status(404).json({ ok: false, message: "User not found." });
+    res.json({ ok: true, wallet });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ ok: false, message: "Server error." });
+  }
 });
-app.get("/api/coin-history/:email",(req,res)=>{const email=req.params.email;const f="./coin-history.json";const logs=fs.existsSync(f)?JSON.parse(fs.readFileSync(f,"utf8")):[];res.json({ok:true,history:logs.filter(x=>x.email===email).reverse()});});
-app.get("/history",(req,res)=>{res.sendFile(__dirname+"/public/history.html");});
+app.get("/api/coin-history/:email", async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT id, email, username, amount, old_coins, new_coins, type, task_id, referred_user, created_at
+       FROM coin_history
+       WHERE email = $1
+       ORDER BY created_at DESC`,
+      [req.params.email]
+    );
 
-app.post("/api/daily-bonus", (req, res) => {
-  const result = addDailyBonus(req.body.email);
-  res.status(result.ok ? 200 : 400).json(result);
+    res.json({ ok: true, history: result.rows });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ ok: false, message: "Server error." });
+  }
 });
 
-app.get("/api/my-rewards/:email", (req, res) => {
-  const users = JSON.parse(require("fs").readFileSync("./users.json", "utf8"));
-  const user = users.find(u => u.email === req.params.email);
-  if (!user) return res.status(404).json({ ok: false, message: "User not found." });
-  res.json({ ok: true, rewards: user.rewards || [] });
+app.get("/history", (req, res) => {
+  res.sendFile(__dirname + "/public/history.html");
 });
 
-app.get("/api/profile/:email", (req, res) => {
-  const fs = require("fs");
-  const users = JSON.parse(fs.readFileSync("./users.json", "utf8"));
-  const user = users.find(u => u.email === req.params.email);
-  if (!user) return res.status(404).json({ ok: false, message: "User not found." });
-  res.json({
-    ok: true,
-    user: {
-      username: user.username,
-      email: user.email,
-      coins: user.coins || 0,
-      referralCode: user.referralCode || null,
-      referredBy: user.referredBy || null,
-      completedTasks: (user.completedTasks || []).length,
-      redeemedRewards: (user.rewards || []).length
+app.get("/api/my-rewards/:email", async (req, res) => {
+  try {
+    const result = await db.query(
+      "SELECT rewards FROM users WHERE email = $1",
+      [req.params.email]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ ok: false, message: "User not found." });
     }
-  });
+
+    res.json({
+      ok: true,
+      rewards: result.rows[0].rewards || []
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ ok: false, message: "Server error." });
+  }
+});
+
+app.get("/api/profile/:email", async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT username, email, coins, referral_code, referred_by,
+              completed_tasks, rewards
+       FROM users
+       WHERE email = $1`,
+      [req.params.email]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ ok: false, message: "User not found." });
+    }
+
+    const user = result.rows[0];
+
+    res.json({
+      ok: true,
+      user: {
+        username: user.username,
+        email: user.email,
+        coins: Number(user.coins || 0),
+        referralCode: user.referral_code || null,
+        referredBy: user.referred_by || null,
+        completedTasks: Array.isArray(user.completed_tasks)
+          ? user.completed_tasks.length
+          : 0,
+        redeemedRewards: Array.isArray(user.rewards)
+          ? user.rewards.length
+          : 0
+      }
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ ok: false, message: "Server error." });
+  }
 });
 
 app.get("/api/tasks", (req, res) => {
   res.json({ ok: true, tasks: getTasks() });
 });
 
-app.post("/api/complete-task", (req, res) => {
-  const result = completeTask(req.body.email, req.body.taskId);
-  res.status(result.ok ? 200 : 400).json(result);
+app.post("/api/complete-task", async (req, res) => {
+  try {
+    const result = await completeTask(req.body.email, req.body.taskId);
+    res.status(result.ok ? 200 : 400).json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ ok: false, message: "Server error." });
+  }
 });
 
 app.get("/api/rewards", (req, res) => {
   res.json({ ok: true, rewards: getRewards() });
 });
 
-app.post("/api/redeem", (req, res) => {
-  const result = redeemReward(req.body.email, req.body.rewardId);
-  res.status(result.ok ? 200 : 400).json(result);
+app.post("/api/redeem", async (req, res) => {
+  try {
+    const result = await redeemReward(req.body.email, req.body.rewardId);
+    res.status(result.ok ? 200 : 400).json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ ok: false, message: "Server error." });
+  }
 });
 
 const crypto = require("crypto");
 const ADMIN_TOKEN = crypto.randomBytes(32).toString("hex");
 
-app.post("/api/admin/login",(req,res)=>{
-  if(req.body.password !== process.env.ADMIN_PASSWORD)
-    return res.status(401).json({ok:false,message:"Wrong admin password."});
-  res.json({ok:true,token:ADMIN_TOKEN});
+app.post("/api/admin/login", (req, res) => {
+  if (req.body.password !== process.env.ADMIN_PASSWORD) {
+    return res.status(401).json({
+      ok: false,
+      message: "Wrong admin password."
+    });
+  }
+
+  res.json({ ok: true, token: ADMIN_TOKEN });
 });
 
-function requireAdmin(req,res,next){
-  const token=req.headers["x-admin-token"];
-  if(token !== ADMIN_TOKEN)
-    return res.status(401).json({ok:false,message:"Admin login required."});
+function requireAdmin(req, res, next) {
+  const token = req.headers["x-admin-token"];
+
+  if (token !== ADMIN_TOKEN) {
+    return res.status(401).json({
+      ok: false,
+      message: "Admin login required."
+    });
+  }
+
   next();
 }
 
-app.post("/api/admin/coins",requireAdmin,(req,res)=>{const email=req.body.email;const amount=Number(req.body.amount);if(!email||!Number.isInteger(amount)||amount===0)return res.status(400).json({ok:false,message:"Invalid email or amount."});const users=JSON.parse(fs.readFileSync("./users.json","utf8"));const user=users.find(u=>u.email===email);if(!user)return res.status(404).json({ok:false,message:"User not found."});const oldCoins=user.coins||0;user.coins=Math.max(0,oldCoins+amount);fs.writeFileSync("./users.json",JSON.stringify(users,null,2));const logFile="./coin-history.json";let logs=[];if(fs.existsSync(logFile)){try{logs=JSON.parse(fs.readFileSync(logFile,"utf8"));}catch(e){logs=[];}}logs.push({email:user.email,username:user.username,amount,oldCoins,newCoins:user.coins,time:new Date().toISOString()});fs.writeFileSync(logFile,JSON.stringify(logs,null,2));res.json({ok:true,coins:user.coins,message:amount>0?"Coins added.":"Coins removed."});});
+app.post("/api/admin/coins", requireAdmin, async (req, res) => {
+  const email = req.body.email;
+  const amount = Number(req.body.amount);
 
-app.get("/api/admin/coin-history",requireAdmin,(req,res)=>{const f="./coin-history.json";const logs=fs.existsSync(f)?JSON.parse(fs.readFileSync(f,"utf8")):[];res.json({ok:true,logs:logs.slice().reverse()});});
+  if (!email || !Number.isInteger(amount) || amount === 0) {
+    return res.status(400).json({
+      ok: false,
+      message: "Invalid email or amount."
+    });
+  }
 
-app.get("/api/admin/summary",requireAdmin,(req,res)=>{const users=JSON.parse(fs.readFileSync("./users.json","utf8"));const f="./coin-history.json";const logs=fs.existsSync(f)?JSON.parse(fs.readFileSync(f,"utf8")):[];const today=new Date().toISOString().slice(0,10);const todayLogs=logs.filter(x=>x.time&&x.time.slice(0,10)===today);const added=todayLogs.filter(x=>x.amount>0).reduce((a,x)=>a+x.amount,0);const removed=todayLogs.filter(x=>x.amount<0).reduce((a,x)=>a+Math.abs(x.amount),0);res.json({ok:true,totalUsers:users.length,totalCoins:users.reduce((a,u)=>a+(u.coins||0),0),addedToday:added,removedToday:removed,totalChanges:logs.length});});
+  const client = await db.connect();
 
-app.get("/api/admin/users", requireAdmin,(req,res)=>{const users=JSON.parse(fs.readFileSync("./users.json","utf8"));res.json({ok:true,users:users.map(u=>({username:u.username,email:u.email,coins:u.coins||0}))});});
+  try {
+    await client.query("BEGIN");
 
-app.get("/admin",(req,res)=>{res.sendFile(__dirname+"/public/admin.html");});
-app.get("/admin-login",(req,res)=>{res.sendFile(__dirname+"/public/admin-login.html");});
-app.get("/coin-history",(req,res)=>{res.sendFile(__dirname+"/public/coin-history.html");});
-app.get("/api/admin/user-details",requireAdmin,(req,res)=>{const email=req.query.email;if(!email)return res.status(400).json({ok:false,message:"Email required."});const users=JSON.parse(fs.readFileSync("./users.json","utf8"));const user=users.find(u=>u.email===email);if(!user)return res.status(404).json({ok:false,message:"User not found."});const f="./coin-history.json";const logs=fs.existsSync(f)?JSON.parse(fs.readFileSync(f,"utf8")):[];res.json({ok:true,user:{username:user.username,email:user.email,coins:user.coins||0,completedTasks:user.completedTasks||[],rewards:user.rewards||[],coinHistory:logs.filter(x=>x.email===email).reverse()}});});
+    const result = await client.query(
+      "SELECT * FROM users WHERE email = $1 FOR UPDATE",
+      [email]
+    );
+
+    if (!result.rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({
+        ok: false,
+        message: "User not found."
+      });
+    }
+
+    const user = result.rows[0];
+    const oldCoins = Number(user.coins || 0);
+    const newCoins = Math.max(0, oldCoins + amount);
+
+    await client.query(
+      "UPDATE users SET coins = $1 WHERE email = $2",
+      [newCoins, email]
+    );
+
+    await client.query(
+      `INSERT INTO coin_history
+       (email, username, amount, old_coins, new_coins, type)
+       VALUES ($1, $2, $3, $4, $5, 'admin-adjustment')`,
+      [user.email, user.username, newCoins - oldCoins, oldCoins, newCoins]
+    );
+
+    await client.query("COMMIT");
+
+    res.json({
+      ok: true,
+      coins: newCoins,
+      message: amount > 0 ? "Coins added." : "Coins removed."
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error(error);
+    res.status(500).json({
+      ok: false,
+      message: "Server error."
+    });
+  } finally {
+    client.release();
+  }
+});
+
+app.get("/api/admin/coin-history", requireAdmin, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT id, email, username, amount, old_coins, new_coins,
+              type, task_id, referred_user, created_at
+       FROM coin_history
+       ORDER BY created_at DESC`
+    );
+
+    res.json({ ok: true, logs: result.rows });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ ok: false, message: "Server error." });
+  }
+});
+
+app.get("/api/admin/summary", requireAdmin, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT
+        (SELECT COUNT(*) FROM users) AS total_users,
+        (SELECT COALESCE(SUM(coins), 0) FROM users) AS total_coins,
+        (SELECT COALESCE(SUM(amount), 0)
+           FROM coin_history
+          WHERE amount > 0
+            AND created_at::date = CURRENT_DATE) AS added_today,
+        (SELECT COALESCE(SUM(ABS(amount)), 0)
+           FROM coin_history
+          WHERE amount < 0
+            AND created_at::date = CURRENT_DATE) AS removed_today,
+        (SELECT COUNT(*) FROM coin_history) AS total_changes`
+    );
+
+    const row = result.rows[0];
+
+    res.json({
+      ok: true,
+      totalUsers: Number(row.total_users),
+      totalCoins: Number(row.total_coins),
+      addedToday: Number(row.added_today),
+      removedToday: Number(row.removed_today),
+      totalChanges: Number(row.total_changes)
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ ok: false, message: "Server error." });
+  }
+});
+
+app.get("/api/admin/users", requireAdmin, async (req, res) => {
+  try {
+    const result = await db.query(
+      "SELECT username, email, coins FROM users ORDER BY created_at DESC"
+    );
+
+    res.json({
+      ok: true,
+      users: result.rows.map(user => ({
+        username: user.username,
+        email: user.email,
+        coins: Number(user.coins || 0)
+      }))
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ ok: false, message: "Server error." });
+  }
+});
+
+app.get("/admin", (req, res) => {
+  res.sendFile(__dirname + "/public/admin.html");
+});
+
+app.get("/admin-login", (req, res) => {
+  res.sendFile(__dirname + "/public/admin-login.html");
+});
+
+app.get("/coin-history", (req, res) => {
+  res.sendFile(__dirname + "/public/coin-history.html");
+});
+
+app.get("/api/admin/user-details", requireAdmin, async (req, res) => {
+  const email = req.query.email;
+
+  if (!email) {
+    return res.status(400).json({
+      ok: false,
+      message: "Email required."
+    });
+  }
+
+  try {
+    const userResult = await db.query(
+      `SELECT username, email, coins, completed_tasks, rewards
+       FROM users
+       WHERE email = $1`,
+      [email]
+    );
+
+    if (!userResult.rows.length) {
+      return res.status(404).json({
+        ok: false,
+        message: "User not found."
+      });
+    }
+
+    const user = userResult.rows[0];
+
+    const historyResult = await db.query(
+      `SELECT id, email, username, amount, old_coins, new_coins,
+              type, task_id, referred_user, created_at
+       FROM coin_history
+       WHERE email = $1
+       ORDER BY created_at DESC`,
+      [email]
+    );
+
+    res.json({
+      ok: true,
+      user: {
+        username: user.username,
+        email: user.email,
+        coins: Number(user.coins || 0),
+        completedTasks: user.completed_tasks || [],
+        rewards: user.rewards || [],
+        coinHistory: historyResult.rows
+      }
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      ok: false,
+      message: "Server error."
+    });
+  }
+});
 
 app.get("/user-details",(req,res)=>{res.sendFile(__dirname+"/public/user-details.html");});
-app.post("/api/tasks/complete",async(req,res)=>{try{const email=req.body.email;const taskId=req.body.taskId;if(!email||!taskId)return res.status(400).json({ok:false,message:"Missing task information."});const users=JSON.parse(fs.readFileSync("./users.json","utf8"));const user=users.find(u=>u.email===email);if(!user)return res.status(404).json({ok:false,message:"User not found."});if(!user.completedTasks)user.completedTasks=[];if(user.completedTasks.includes(taskId))return res.status(400).json({ok:false,message:"Task already completed."});const rewards={"daily-gaming":10,"daily-bonus":5};const reward=rewards[taskId];if(!reward)return res.status(400).json({ok:false,message:"Invalid task."});const oldCoins=user.coins||0;user.coins=oldCoins+reward;user.completedTasks.push(taskId);fs.writeFileSync("./users.json",JSON.stringify(users,null,2));const historyFile="./coin-history.json";let history=[];if(fs.existsSync(historyFile)){try{history=JSON.parse(fs.readFileSync(historyFile,"utf8"));}catch(e){history=[];}}history.push({email:user.email,username:user.username,amount:reward,oldCoins,newCoins:user.coins,type:"task-completion",taskId,time:new Date().toISOString()});fs.writeFileSync(historyFile,JSON.stringify(history,null,2));res.json({ok:true,coins:user.coins,reward});}catch(e){res.status(500).json({ok:false,message:"Server error."});}});
 app.listen(PORT,"0.0.0.0",()=>{console.log("Gaming website running on port 3000");});
