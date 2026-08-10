@@ -12,3 +12,6 @@ X
 *.otp-backup
 *-backup
 *.referral-backup
+
+users.json
+coin-history.json
