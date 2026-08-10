@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Signup - Gaming Hub</title>
+<style>
+body{
+  margin:0;
+  background:#080b14;
+  color:white;
+  font-family:Arial;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  min-height:100vh;
+}
+.box{
+  width:90%;
+  max-width:380px;
+  background:#151c2b;
+  padding:25px;
+  border-radius:18px;
+}
+h1{text-align:center}
+input{
+  width:100%;
+  padding:13px;
+  margin:8px 0;
+  box-sizing:border-box;
+  border-radius:8px;
+  border:1px solid #374151;
+  background:#0b0f19;
+  color:white;
+}
+button{
+  width:100%;
+  padding:13px;
+  margin-top:10px;
+  border:0;
+  border-radius:8px;
+  background:#2563eb;
+  color:white;
+  font-weight:bold;
+}
+.ref{
+  border-color:#16a34a;
+}
+.note{
+  color:#9ca3af;
+  font-size:13px;
+  margin-top:5px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="box">
+
+<h1>🎮 Create Account</h1>
+
+<input id="name" type="text" placeholder="Username">
+
+<input id="email" type="email" placeholder="Email">
+
+<input id="password" type="password" placeholder="Password">
+
+<input id="confirm" type="password" placeholder="Confirm Password">
+
+<input id="referralCode"
+       class="ref"
+       type="text"
+       placeholder="Referral Code (Optional)">
+
+<div class="note">
+🎁 Referral code ব্যবহার করলে referrer +50 coins পাবে।
+</div>
+
+<button onclick="signup()">Create Account</button>
+
+</div>
+
+<script>
+
+async function signup(){
+
+  const name=document.getElementById("name").value.trim();
+  const email=document.getElementById("email").value.trim();
+  const password=document.getElementById("password").value;
+  const confirm=document.getElementById("confirm").value;
+  const referralCode=document.getElementById("referralCode").value.trim();
+
+  if(!name || !email || !password || !confirm){
+    alert("Please fill all required fields.");
+    return;
+  }
+
+  if(password !== confirm){
+    alert("Passwords do not match.");
+    return;
+  }
+
+  try{
+
+    const r=await fetch("/api/signup",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json"
+      },
+      body:JSON.stringify({
+        username:name,
+        email:email,
+        password:password,
+        referralCode:referralCode
+      })
+    });
+
+    const data=await r.json();
+
+    if(data.ok){
+
+      alert(
+        data.message +
+        (data.referralCode
+          ? "\\n\\nYour Referral Code: " + data.referralCode
+          : "")
+      );
+
+      location.href="/login";
+
+    }else{
+
+      alert(data.message);
+
+    }
+
+  }catch(e){
+
+    alert("Server error. Please try again.");
+
+  }
+
+}
+
+</script>
+
+</body>
+</html>

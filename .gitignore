@@ -1,0 +1,14 @@
+node_modules/
+users.json
+coin-history.json
+.env
+*.backup
+*.before-*
+*.backup
+*.before-*
+*.referral-backup
+server.
+X
+*.otp-backup
+*-backup
+*.referral-backup

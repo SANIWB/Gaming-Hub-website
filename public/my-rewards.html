@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Rewards - Gaming Hub</title>
+<style>
+body{margin:0;background:#080b14;color:white;font-family:Arial}
+header{padding:20px;text-align:center;background:#111827}
+.container{max-width:500px;margin:auto;padding:20px 15px}
+.card{background:#151c2b;border-radius:16px;padding:20px;margin-bottom:15px}
+button{width:100%;padding:12px;border:0;border-radius:9px;background:#374151;color:white;font-weight:bold}
+.empty{text-align:center;color:#9ca3af;margin-top:40px}
+.date{font-size:13px;color:#9ca3af;margin-top:8px}
+</style>
+</head>
+<body>
+
+<header>
+<h1>🎁 My Rewards</h1>
+</header>
+
+<div class="container">
+
+<button onclick="location.href='/dashboard'">← Dashboard</button>
+
+<div id="rewards"></div>
+
+</div>
+
+<script>
+const user = JSON.parse(localStorage.getItem("gamingUser") || "null");
+
+if(!user || !user.email){
+  location.href="/login";
+}
+
+function loadRewards(){
+  fetch("/api/my-rewards/" + encodeURIComponent(user.email))
+    .then(r=>r.json())
+    .then(data=>{
+      const box=document.getElementById("rewards");
+
+      if(!data.ok){
+        box.innerHTML='<div class="empty">'+data.message+'</div>';
+        return;
+      }
+
+      if(data.rewards.length === 0){
+        box.innerHTML='<div class="empty">🎁 No rewards redeemed yet.</div>';
+        return;
+      }
+
+      box.innerHTML="";
+
+      data.rewards.forEach(reward=>{
+        box.innerHTML += `
+          <div class="card">
+            <h2>${reward.name}</h2>
+            <div class="date">🪙 Cost: ${reward.cost} Coins</div><div class="date">Redeemed: ${new Date(reward.redeemedAt).toLocaleString()}</div>
+          </div>
+        `;
+      });
+    });
+}
+
+loadRewards();
+</script>
+
+</body>
+</html>

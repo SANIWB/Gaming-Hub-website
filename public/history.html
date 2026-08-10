@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Coin History - Gaming Hub</title>
+<style>
+body{margin:0;background:#080b14;color:#fff;font-family:Arial}
+.container{max-width:520px;margin:auto;padding:18px}
+.card{background:#151c2b;border:1px solid #263244;border-radius:16px;padding:16px;margin:12px 0}
+button{padding:12px;border:0;border-radius:10px;background:#374151;color:#fff;font-weight:bold}
+.plus{color:#4ade80}.minus{color:#f87171}
+.small{color:#9ca3af;font-size:13px}
+</style>
+</head>
+<body>
+<div class="container">
+<button onclick="location.href='/'">← Dashboard</button>
+<h2>📜 Coin History</h2>
+<div id="history">Loading...</div>
+</div>
+
+<script>
+async function loadHistory(){
+ const user=JSON.parse(localStorage.getItem("gamingUser")||"null");
+ if(!user||!user.email){
+   location.href="/login";
+   return;
+ }
+
+ const r=await fetch("/api/coin-history/"+encodeURIComponent(user.email));
+ const d=await r.json();
+
+ if(!d.history.length){
+   document.getElementById("history").innerHTML="<div class='card'>No coin history yet.</div>";
+   return;
+ }
+
+ document.getElementById("history").innerHTML=d.history.map(x=>{
+   const positive=x.amount>0;
+   return "<div class='card'>"+
+   "<b class='"+(positive?"plus":"minus")+"'>"+
+   (x.type==="reward-redemption"?"-":positive?"+":"")+Math.abs(Number(x.amount))+" Coins</b>"+
+   "<div class='small'>"+(x.rewardName?'🎁 '+x.rewardName:x.taskId==="daily-gaming"?'🎮 Daily Gaming Task':x.taskId==="daily-bonus"?'🔥 Daily Bonus Task':x.type==="daily-bonus"?'🎁 Daily Bonus':'Coin Transaction')+"</div>"+
+   "<div class='small'>Balance: "+x.newCoins+"</div>"+
+   "<div class='small'>"+new Date(x.time).toLocaleString()+"</div>"+
+   "</div>";
+ }).join("");
+}
+loadHistory();
+</script>
+</body>
+</html>

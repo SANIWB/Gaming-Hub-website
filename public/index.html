@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gaming Hub</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#080b14;color:#fff;font-family:Arial,sans-serif}
+.container{max-width:520px;margin:auto;padding:18px}
+.header{display:flex;justify-content:space-between;align-items:center}
+.logo{font-size:24px;font-weight:800}
+.card{background:#151c2b;border:1px solid #263244;border-radius:16px;padding:18px;margin-top:15px}
+.coins{font-size:38px;font-weight:800;margin-top:8px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:15px}
+.btn{display:block;text-decoration:none;text-align:center;background:#242d40;color:#fff;padding:16px;border-radius:12px;font-weight:700}
+.small{color:#9ca3af;font-size:13px}
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="header">
+<div class="logo">🎮 Gaming Hub</div>
+<div>👤</div>
+</div>
+
+<div class="card">
+<div class="small">YOUR COINS</div>
+<div class="coins" id="coins">🪙 0</div>
+</div>
+
+<div class="grid">
+<a class="btn" href="/tasks">🎯 Tasks</a>
+<a class="btn" href="/rewards">🎁 Rewards</a>
+<a class="btn" href="/profile">👤 Profile</a>
+<a class="btn" href="/history">📜 History</a>
+</div>
+
+<div class="card">
+<h3>🔥 Welcome to Gaming Hub</h3>
+<p class="small">Complete tasks, earn virtual coins and redeem rewards.</p>
+</div>
+
+</div>
+</body>
+</html>

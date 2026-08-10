@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gaming Hub</title>
+<style>
+body{margin:0;background:#080b14;color:white;font-family:Arial}
+header{padding:20px;text-align:center;background:#111827}
+.container{max-width:520px;margin:auto;padding:20px 15px}
+.card{background:#151c2b;border-radius:16px;padding:20px;margin-bottom:15px}
+.stat{font-size:32px;font-weight:bold;margin-top:10px}
+button{width:100%;padding:13px;border:0;border-radius:10px;background:#2563eb;color:white;font-weight:bold;margin-top:10px}
+.bonus{background:#16a34a}
+.logout{background:#dc2626}
+#message{text-align:center;margin:15px;color:#86efac}
+</style>
+</head>
+<body>
+
+<header><h1>🎮 Gaming Hub</h1></header>
+
+<div class="container">
+
+<div class="card">
+<h2>Welcome, <span id="username">Gamer</span> 👋</h2>
+<p id="email">Loading...</p>
+</div>
+
+<div class="card">
+<h3>🪙 Your Coins</h3>
+<div class="stat" id="coins">0</div>
+<p>Gaming coins</p>
+<button id="bonusBtn" class="bonus" onclick="claimBonus()">🎁 Claim Daily Bonus (+50)</button>
+</div>
+
+<div class="card">
+<h3>🏆 Your Points</h3>
+<div class="stat">0</div>
+<p>Reward points</p>
+</div>
+
+
+<div class="card" id="referralCard">
+  <h3>🎁 Refer & Earn</h3>
+  <p>Invite friends and earn <b>50 bonus coins</b> for each successful referral.</p>
+
+  <div style="background:#0f172a;padding:12px;border-radius:10px;margin:10px 0">
+    <div style="color:#9ca3af;font-size:13px">Your Referral Code</div>
+    <div id="referralCode" style="font-size:22px;font-weight:bold;margin-top:5px">Loading...</div>
+  </div>
+
+  <button onclick="copyReferralCode()">📋 Copy Code</button>
+  <button onclick="shareReferral()">📤 Share Referral</button>
+  <div id="referralMessage" style="text-align:center;margin-top:10px;color:#86efac"></div>
+</div>
+\n<button onclick="location.href='/tasks'">🎯 Earn Coins</button>
+<button onclick="location.href='/rewards'">🏆 Rewards Shop</button>
+<button onclick="location.href='/my-rewards'">🎁 My Rewards</button>
+<button onclick="location.href='/history'">📜 Coin History</button>
+<button onclick="location.href='/profile'">👤 My Profile</button>
+
+<div id="message"></div>
+
+<button class="logout" onclick="logout()">Logout</button>
+
+</div>
+
+<script>
+const user=JSON.parse(localStorage.getItem("gamingUser")||"null");
+
+if(!user||!user.email){
+  location.href="/login";
+}else{
+  loadWallet();
+  loadReferral();
+}
+
+function loadWallet(){
+  fetch("/api/wallet/"+encodeURIComponent(user.email))
+  .then(r=>r.json())
+  .then(data=>{
+    if(data.ok){
+      document.getElementById("username").textContent=data.wallet.username || "Gamer";
+      document.getElementById("email").textContent=data.wallet.email || "";
+      document.getElementById("coins").textContent=data.wallet.coins;
+      const btn=document.getElementById("bonusBtn"); if(btn){const today=new Date().toISOString().slice(0,10); if(data.wallet.lastBonus===today){btn.disabled=true;btn.textContent="✅ Daily Bonus Claimed";btn.style.opacity="0.6";}}
+    }
+  });
+}
+
+function claimBonus(){
+  fetch("/api/daily-bonus",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({email:user.email})
+  })
+  .then(r=>r.json())
+  .then(data=>{
+    document.getElementById("message").textContent=data.message;
+    if(data.coins!==undefined){
+      document.getElementById("coins").textContent=data.coins;
+    }
+  });
+}
+
+
+async function loadReferral(){
+  try{
+    const r = await fetch("/api/profile/" + encodeURIComponent(user.email));
+    const data = await r.json();
+
+    if(data.ok && data.user.referralCode){
+      document.getElementById("referralCode").textContent =
+        data.user.referralCode;
+    }else{
+      document.getElementById("referralCode").textContent =
+        "Unavailable";
+    }
+  }catch(e){
+    document.getElementById("referralCode").textContent =
+      "Unavailable";
+  }
+}
+
+function copyReferralCode(){
+  const code = document.getElementById("referralCode").textContent;
+
+  if(!code || code === "Loading..." || code === "Unavailable"){
+    return;
+  }
+
+  navigator.clipboard.writeText(code).then(()=>{
+    document.getElementById("referralMessage").textContent =
+      "✅ Referral code copied!";
+  }).catch(()=>{
+    document.getElementById("referralMessage").textContent =
+      "Copy failed. Please copy the code manually.";
+  });
+}
+
+async function shareReferral(){
+  const code = document.getElementById("referralCode").textContent;
+
+  if(!code || code === "Loading..." || code === "Unavailable"){
+    return;
+  }
+
+  const shareText =
+    "🎮 Join Gaming Hub and start earning gaming coins!\n\n" +
+    "Use my referral code: " + code + "\n\n" +
+    "🎁 Referral bonus: 50 coins";
+
+  if(navigator.share){
+    try{
+      await navigator.share({
+        title:"Gaming Hub - Refer & Earn",
+        text:shareText,
+        url:location.origin + "/signup"
+      });
+    }catch(e){}
+  }else{
+    await navigator.clipboard.writeText(shareText);
+    document.getElementById("referralMessage").textContent =
+      "✅ Referral message copied!";
+  }
+}
+
+function logout(){
+  localStorage.removeItem("gamingUser");
+  location.href="/login";
+}
+</script>
+
+</body>
+</html>

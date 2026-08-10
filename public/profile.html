@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Profile - Gaming Hub</title>
+<style>
+body{margin:0;background:#080b14;color:white;font-family:Arial}
+header{padding:20px;text-align:center;background:#111827}
+.container{max-width:500px;margin:auto;padding:20px 15px}
+.card{background:#151c2b;border-radius:16px;padding:20px;margin-bottom:15px}
+.stat{font-size:28px;font-weight:bold;margin-top:8px}
+.label{color:#9ca3af}
+button{width:100%;padding:12px;border:0;border-radius:9px;background:#374151;color:white;font-weight:bold}
+</style>
+</head>
+<body>
+
+<header>
+<h1>👤 My Profile</h1>
+</header>
+
+<div class="container">
+
+<button onclick="location.href='/dashboard'">← Dashboard</button>
+
+<div class="card">
+<h2 id="username">Loading...</h2>
+<p id="email" class="label">Loading...</p>
+</div>
+
+<div class="card">
+<div class="label">🪙 Coins</div>
+<div class="stat" id="coins">0</div>
+</div>
+
+<div class="card">
+<div class="label">🎯 Completed Tasks</div>
+<div class="stat" id="tasks">0</div>
+</div>
+
+<div class="card">
+<div class="label">🎁 Redeemed Rewards</div>
+<div class="stat" id="rewards">0</div>
+</div>
+
+</div>
+
+<script>
+const user = JSON.parse(localStorage.getItem("gamingUser") || "null");
+
+if(!user || !user.email){
+  location.href="/login";
+}
+
+fetch("/api/profile/" + encodeURIComponent(user.email))
+  .then(r=>r.json())
+  .then(data=>{
+    if(!data.ok){
+      alert(data.message);
+      return;
+    }
+
+    document.getElementById("username").textContent=data.user.username;
+    document.getElementById("email").textContent=data.user.email;
+    document.getElementById("coins").textContent=data.user.coins;
+    document.getElementById("tasks").textContent=data.user.completedTasks;
+    document.getElementById("rewards").textContent=data.user.redeemedRewards;
+  });
+</script>
+
+</body>
+</html>

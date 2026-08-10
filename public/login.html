@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login - Gaming Hub</title>
+<style>
+body{margin:0;background:#080b14;color:white;font-family:Arial;display:flex;justify-content:center;align-items:center;min-height:100vh}
+.box{width:90%;max-width:380px;background:#151c2b;padding:25px;border-radius:18px}
+h1{text-align:center}
+input{width:100%;padding:13px;margin:8px 0;box-sizing:border-box;border-radius:8px;border:1px solid #374151;background:#0b0f19;color:white}
+button{width:100%;padding:13px;margin-top:10px;border:0;border-radius:8px;background:#2563eb;color:white;font-weight:bold}
+.signup{text-align:center;margin-top:18px;color:#9ca3af}
+</style>
+</head>
+<body>
+
+<div class="box">
+<h1>🎮 Gaming Hub</h1>
+
+<input id="email" type="email" placeholder="Email">
+<input id="password" type="password" placeholder="Password">
+
+<button onclick="login()">Login with Password</button><hr style="margin:20px 0;border-color:#374151"><input id="otp" type="text" inputmode="numeric" maxlength="6" placeholder="Enter OTP"><button onclick="sendOTP()">Send OTP to Email</button><button onclick="verifyOTP()">Login with OTP</button>
+
+<div class="signup">
+Don't have an account?<br>
+<button onclick="signup()">Create Account</button>
+</div>
+</div>
+
+<script>
+function login(){
+  const email=document.getElementById("email").value;
+  const password=document.getElementById("password").value;
+
+  if(!email || !password){
+    alert("Please enter email and password.");
+    return;
+  }
+
+  fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password})}).then(r=>r.json()).then(data=>{if(data.ok){localStorage.setItem("gamingUser",JSON.stringify(data.user));localStorage.setItem("gamingUserEmail",data.user.email);location.href="/dashboard?email="+encodeURIComponent(data.user.email);}else{alert(data.message);}});
+}
+
+function signup(){
+  location.href="/signup";
+}
+
+async function sendOTP(){const email=document.getElementById("email").value;if(!email){alert("Enter your email first.");return;}const r=await fetch("/api/send-otp",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email})});const d=await r.json();alert(d.message);}
+async function verifyOTP(){const email=document.getElementById("email").value;const otp=document.getElementById("otp").value;if(!email||!otp){alert("Enter email and OTP.");return;}const r=await fetch("/api/verify-otp",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,otp})});const d=await r.json();if(d.ok){localStorage.setItem("gamingUser",JSON.stringify(d.user));localStorage.setItem("gamingUserEmail",d.user.email);location.href="/dashboard?email="+encodeURIComponent(d.user.email);}else alert(d.message);}
+</script>
+
+</body>
+</html>

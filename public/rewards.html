@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rewards Shop - Gaming Hub</title>
+<style>
+body{margin:0;background:#080b14;color:white;font-family:Arial}
+header{padding:20px;text-align:center;background:#111827}
+.container{max-width:500px;margin:auto;padding:20px 15px}
+.card{background:#151c2b;border-radius:16px;padding:20px;margin-bottom:15px}
+.cost{font-size:22px;font-weight:bold;margin:10px 0}
+button{width:100%;padding:12px;border:0;border-radius:9px;background:#2563eb;color:white;font-weight:bold}
+.back{background:#374151;margin-bottom:15px}
+#coins{text-align:center;font-size:20px;margin-bottom:20px}
+</style>
+</head>
+<body>
+
+<header>
+<h1>🏆 Rewards Shop</h1>
+</header>
+
+<div class="container">
+
+<button class="back" onclick="location.href='/dashboard'">← Dashboard</button>
+
+<div id="coins">🪙 Coins: 0</div>
+
+<div id="rewards"></div>
+
+</div>
+
+<script>
+const user = JSON.parse(localStorage.getItem("gamingUser") || "null");
+
+if(!user || !user.email){
+  location.href="/login";
+}
+
+function loadWallet(){
+  fetch("/api/wallet/" + encodeURIComponent(user.email))
+    .then(r=>r.json())
+    .then(data=>{
+      if(data.ok){
+        document.getElementById("coins").textContent =
+          "🪙 Coins: " + data.wallet.coins;
+      }
+    });
+}
+
+function loadRewards(){
+  fetch("/api/rewards")
+    .then(r=>r.json())
+    .then(data=>{
+      const box=document.getElementById("rewards");
+      box.innerHTML="";
+
+      data.rewards.forEach(reward=>{
+        box.innerHTML += `
+          <div class="card">
+            <h2>${reward.name}</h2>
+            <div class="cost">🪙 ${reward.cost} Coins</div>
+            <button onclick="redeem('${reward.id}')">Redeem Reward</button>
+          </div>
+        `;
+      });
+    });
+}
+
+function redeem(rewardId){
+  fetch("/api/redeem",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      email:user.email,
+      rewardId:rewardId
+    })
+  })
+  .then(r=>r.json())
+  .then(data=>{
+    alert(data.message);
+
+    if(data.ok){
+      loadWallet();
+    }
+  });
+}
+
+loadWallet();
+loadRewards();
+</script>
+
+</body>
+</html>
