@@ -1,104 +1,115 @@
 const nodemailer = require("nodemailer");
-const fs = require("fs");
 const bcrypt = require("bcryptjs");
+const db = require("./db");
 
-const FILE = "./users.json";
+async function signup(username, email, password, referralCode = "") {
+  const existing = await db.query(
+    "SELECT id FROM users WHERE email = $1",
+    [email]
+  );
 
-function getUsers() {
-  return JSON.parse(fs.readFileSync(FILE, "utf8"));
-}
-
-function saveUsers(users) {
-  fs.writeFileSync(FILE, JSON.stringify(users, null, 2));
-}
-
-async function signup(username, email, password, referralCode="") {
-  const users = getUsers();
-
-  if (users.some(u => u.email === email)) {
+  if (existing.rows.length) {
     return { ok: false, message: "Email already registered." };
   }
 
   let referrer = null;
 
   if (referralCode && referralCode.trim()) {
-    referrer = users.find(
-      u => u.referralCode &&
-      u.referralCode.toUpperCase() === referralCode.trim().toUpperCase()
+    const result = await db.query(
+      "SELECT * FROM users WHERE UPPER(referral_code) = UPPER($1)",
+      [referralCode.trim()]
     );
 
-    if (!referrer) {
-      return { ok:false, message:"Invalid referral code." };
+    if (!result.rows.length) {
+      return { ok: false, message: "Invalid referral code." };
     }
+
+    referrer = result.rows[0];
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-
   const newId = Date.now();
-  const ownReferralCode = "GH" + newId.toString(36).toUpperCase();
+  const ownReferralCode =
+    "GH" + newId.toString(36).toUpperCase();
 
-  const newUser = {
-    id: newId,
-    username,
-    email,
-    passwordHash,
-    coins: 0,
-    referralCode: ownReferralCode,
-    referredBy: referrer ? referrer.email : null,
-    completedTasks: [],
-    rewards: []
-  };
+  const client = await db.connect();
 
-  users.push(newUser);
+  try {
+    await client.query("BEGIN");
 
-  if (referrer) {
-    const oldCoins = referrer.coins || 0;
-    referrer.coins = oldCoins + 50;
+    await client.query(
+      `INSERT INTO users
+      (id, username, email, password_hash, coins, referral_code,
+       referred_by, completed_tasks, rewards)
+      VALUES ($1,$2,$3,$4,0,$5,$6,'[]'::jsonb,'[]'::jsonb)`,
+      [
+        newId,
+        username,
+        email,
+        passwordHash,
+        ownReferralCode,
+        referrer ? referrer.email : null
+      ]
+    );
 
-    const historyFile = "./coin-history.json";
-    let history = [];
+    if (referrer) {
+      const oldCoins = Number(referrer.coins || 0);
+      const newCoins = oldCoins + 50;
 
-    if (fs.existsSync(historyFile)) {
-      try {
-        history = JSON.parse(fs.readFileSync(historyFile, "utf8"));
-      } catch(e) {
-        history = [];
-      }
+      await client.query(
+        "UPDATE users SET coins = $1 WHERE id = $2",
+        [newCoins, referrer.id]
+      );
+
+      await client.query(
+        `INSERT INTO coin_history
+        (email, username, amount, old_coins, new_coins,
+         type, referred_user)
+        VALUES ($1,$2,50,$3,$4,'referral-bonus',$5)`,
+        [
+          referrer.email,
+          referrer.username,
+          oldCoins,
+          newCoins,
+          email
+        ]
+      );
     }
 
-    history.push({
-      email: referrer.email,
-      username: referrer.username,
-      amount: 50,
-      oldCoins,
-      newCoins: referrer.coins,
-      type: "referral-bonus",
-      referredUser: email,
-      time: new Date().toISOString()
-    });
+    await client.query("COMMIT");
 
-    fs.writeFileSync(historyFile, JSON.stringify(history, null, 2));
+    return {
+      ok: true,
+      message: referrer
+        ? "Account created successfully. Referral bonus +50 coins added."
+        : "Account created successfully.",
+      referralCode: ownReferralCode
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Signup error:", error);
+    return { ok: false, message: "Server error." };
+  } finally {
+    client.release();
   }
-
-  saveUsers(users);
-
-  return {
-    ok: true,
-    message: referrer
-      ? "Account created successfully. Referral bonus +50 coins added."
-      : "Account created successfully.",
-    referralCode: ownReferralCode
-  };
 }
-async function login(email, password) {
-  const users = getUsers();
-  const user = users.find(u => u.email === email);
 
-  if (!user) {
+async function login(email, password) {
+  const result = await db.query(
+    "SELECT * FROM users WHERE email = $1",
+    [email]
+  );
+
+  if (!result.rows.length) {
     return { ok: false, message: "Invalid email or password." };
   }
 
-  const match = await bcrypt.compare(password, user.passwordHash);
+  const user = result.rows[0];
+
+  const match = await bcrypt.compare(
+    password,
+    user.password_hash
+  );
 
   if (!match) {
     return { ok: false, message: "Invalid email or password." };
@@ -118,34 +129,103 @@ async function login(email, password) {
 const otpStore = new Map();
 
 async function generateOTP(email) {
-  const users = getUsers();
-  const user = users.find(u => u.email === email);
-  if (!user) return { ok:false, message:"Email not registered." };
+  const result = await db.query(
+    "SELECT id FROM users WHERE email = $1",
+    [email]
+  );
 
-  const otp = String(Math.floor(100000 + Math.random()*900000));
-  otpStore.set(email, { otp, expires: Date.now()+5*60*1000 });
-
-  const transporter = nodemailer.createTransport({service:"gmail",auth:{user:process.env.OTP_EMAIL,pass:process.env.OTP_APP_PASSWORD}}); await transporter.sendMail({from:process.env.OTP_EMAIL,to:email,subject:"Gaming Hub OTP",text:"Your Gaming Hub OTP is: "+otp+"\n\nThis OTP expires in 5 minutes."});
-  return { ok:true, message:"OTP generated successfully." };
-}
-
-function verifyOTP(email, otp) {
-  const data = otpStore.get(email);
-  if (!data) return { ok:false, message:"OTP not found or expired." };
-  if (Date.now() > data.expires) {
-    otpStore.delete(email);
-    return { ok:false, message:"OTP expired." };
+  if (!result.rows.length) {
+    return { ok: false, message: "Email not registered." };
   }
-  if (String(otp) !== data.otp) return { ok:false, message:"Invalid OTP." };
 
-  otpStore.delete(email);
-  const user = getUsers().find(u => u.email === email);
+  const otp = String(
+    Math.floor(100000 + Math.random() * 900000)
+  );
+
+  otpStore.set(email, {
+    otp,
+    expires: Date.now() + 5 * 60 * 1000
+  });
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.OTP_EMAIL,
+      pass: process.env.OTP_APP_PASSWORD
+    }
+  });
+
+  await transporter.sendMail({
+    from: process.env.OTP_EMAIL,
+    to: email,
+    subject: "Gaming Hub OTP",
+    text:
+      "Your Gaming Hub OTP is: " +
+      otp +
+      "\n\nThis OTP expires in 5 minutes."
+  });
 
   return {
-    ok:true,
-    message:"OTP verified successfully.",
-    user:{id:user.id,username:user.username,email:user.email}
+    ok: true,
+    message: "OTP generated successfully."
   };
 }
 
-module.exports = { signup, login, generateOTP, verifyOTP };
+async function verifyOTP(email, otp) {
+  const data = otpStore.get(email);
+
+  if (!data) {
+    return {
+      ok: false,
+      message: "OTP not found or expired."
+    };
+  }
+
+  if (Date.now() > data.expires) {
+    otpStore.delete(email);
+    return {
+      ok: false,
+      message: "OTP expired."
+    };
+  }
+
+  if (String(otp) !== data.otp) {
+    return {
+      ok: false,
+      message: "Invalid OTP."
+    };
+  }
+
+  otpStore.delete(email);
+
+  const result = await db.query(
+    "SELECT id, username, email FROM users WHERE email = $1",
+    [email]
+  );
+
+  if (!result.rows.length) {
+    return {
+      ok: false,
+      message: "User not found."
+    };
+  }
+
+  const user = result.rows[0];
+
+  return {
+    ok: true,
+    message: "OTP verified successfully.",
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email
+    }
+  };
+}
+
+module.exports = {
+  signup,
+  login,
+  generateOTP,
+  verifyOTP
+};
