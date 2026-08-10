@@ -1,70 +1,91 @@
-const fs = require("fs");
+const db = require("./db");
 
-const FILE = "./users.json";
+async function addDailyBonus(email) {
+  const result = await db.query(
+    "SELECT * FROM users WHERE email = $1",
+    [email]
+  );
 
-function getUsers() {
-  return JSON.parse(fs.readFileSync(FILE, "utf8"));
-}
-
-function saveUsers(users) {
-  fs.writeFileSync(FILE, JSON.stringify(users, null, 2));
-}
-
-function addDailyBonus(email) {
-  const users = getUsers();
-  const user = users.find(u => u.email === email);
-
-  if (!user) {
+  if (!result.rows.length) {
     return { ok: false, message: "User not found." };
   }
 
-  if (!user.coins) user.coins = 100;
-
+  const user = result.rows[0];
   const today = new Date().toISOString().slice(0, 10);
 
-  if (user.lastBonus === today) {
+  if (user.last_bonus && String(user.last_bonus).slice(0, 10) === today) {
     return {
       ok: false,
       message: "Daily bonus already claimed today.",
-      coins: user.coins
+      coins: Number(user.coins)
     };
   }
 
-  const oldCoins = user.coins;
-  user.coins += 50;
-  user.lastBonus = today;
+  const oldCoins = Number(user.coins || 0);
+  const newCoins = oldCoins + 50;
 
-  const historyFile = "./coin-history.json";
-  let history = [];
-  if (fs.existsSync(historyFile)) { try { history = JSON.parse(fs.readFileSync(historyFile, "utf8")); } catch(e) { history = []; } }
-  history.push({email:user.email,username:user.username,amount:50,oldCoins,newCoins:user.coins,type:"daily-bonus",time:new Date().toISOString()});
-  fs.writeFileSync(historyFile, JSON.stringify(history,null,2));
+  const client = await db.connect();
 
-  saveUsers(users);
+  try {
+    await client.query("BEGIN");
 
-  return {
-    ok: true,
-    message: "🎁 Daily bonus claimed! +50 coins",
-    coins: user.coins
-  };
+    await client.query(
+      `UPDATE users
+       SET coins = $1, last_bonus = $2
+       WHERE email = $3`,
+      [newCoins, today, email]
+    );
+
+    await client.query(
+      `INSERT INTO coin_history
+       (email, username, amount, old_coins, new_coins, type)
+       VALUES ($1, $2, 50, $3, $4, 'daily-bonus')`,
+      [user.email, user.username, oldCoins, newCoins]
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      ok: true,
+      message: "🎁 Daily bonus claimed! +50 coins",
+      coins: newCoins
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Daily bonus error:", error);
+
+    return {
+      ok: false,
+      message: "Server error."
+    };
+  } finally {
+    client.release();
+  }
 }
 
-function getWallet(email) {
-  const users = getUsers();
-  const user = users.find(u => u.email === email);
+async function getWallet(email) {
+  const result = await db.query(
+    `SELECT username, email, coins, last_bonus
+     FROM users
+     WHERE email = $1`,
+    [email]
+  );
 
-  if (!user) return null;
+  if (!result.rows.length) return null;
 
-  if (!user.coins) user.coins = 100;
-
-  saveUsers(users);
+  const user = result.rows[0];
 
   return {
     username: user.username,
     email: user.email,
-    coins: user.coins,
-    lastBonus: user.lastBonus || null
+    coins: Number(user.coins || 0),
+    lastBonus: user.last_bonus
+      ? String(user.last_bonus).slice(0, 10)
+      : null
   };
 }
 
-module.exports = { addDailyBonus, getWallet };
+module.exports = {
+  addDailyBonus,
+  getWallet
+};
