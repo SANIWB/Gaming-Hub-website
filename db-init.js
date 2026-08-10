@@ -12,8 +12,14 @@ async function initDatabase() {
       referred_by TEXT,
       completed_tasks JSONB NOT NULL DEFAULT '[]',
       rewards JSONB NOT NULL DEFAULT '[]',
+      last_bonus DATE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+
+  await db.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS last_bonus DATE
   `);
 
   await db.query(`
